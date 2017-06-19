@@ -6,6 +6,36 @@ import re
 
 from matplotlib import pyplot as pp
 from scipy.stats import ttest_ind
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.svm import SVC
+
+
+def encode_column(data_frame, 
+                  column_name, 
+                  label_encoder=None, 
+                  one_hot_encoder=None):
+    
+    data = data_frame.copy()
+    if label_encoder == None:
+        label_encoder = LabelEncoder()
+        label_encoder.fit(data.loc[:, column_name])
+        
+    data.loc[:, column_name] = label_encoder.transform(data.loc[:, column_name])
+    
+    if one_hot_encoder == None:
+        one_hot_encoder = OneHotEncoder(sparse=False)
+        one_hot_encoder.fit(data.loc[:, column_name].values.reshape(-1, 1))
+        
+    encoded = one_hot_encoder.transform(data.loc[:, column_name].values.reshape(-1,1))
+    
+    for i in range(0, encoded.shape[1]-1):
+        data[column_name+str(i)] = encoded[:, i]
+        
+    data = data.drop(column_name, axis=1)
+    return data, label_encoder, one_hot_encoder
+    
 
 def extract_title(string):
     search_res = re.search(r'[\w]+,\s+([\w]+)\.', string)
@@ -32,6 +62,19 @@ def is_alone(data_frame):
     data.loc[:, 'IsAlone'] = (data['SibSp'] == 0) & (data['Parch'] == 0)
     data['IsAlone'] = data['IsAlone'].apply(binarize)
     return data['IsAlone']
+
+def has_children(data_frame):
+    data = data_frame.copy()
+    has_child_array = (data['Parch'] > 0.) & (data['Age'] >= 18.)
+    h_children = lambda x: 1.0 if x else 0.0
+    data.loc[:, 'HasChildren'] = has_child_array
+    data['HasChildren'] = data['HasChildren'].apply(h_children)  
+    temp_array = data.loc[:, 'HasChildren']
+    temp_array = np.array([2. if age < 18. else x for x, age in zip(temp_array,
+                                                                    data.loc[:, 'Age'])])
+    data.loc[:, 'HasChildren'] = temp_array
+    return data['HasChildren']
+
 
 def fill_nan(data_frame, nan_replacement_dict=None): 
     data = data_frame.copy()
@@ -63,6 +106,7 @@ raw_data_test = pnds.read_csv(r'test.csv')
 """Przygotowanie danych"""
 #PassengerId jest zbednym parametrem
 raw_data_training = raw_data_training.drop(['PassengerId'], axis=1)
+test_passenger_id = raw_data_test.loc[:, 'PassengerId'].values.astype('int')
 raw_data_test = raw_data_test.drop(['PassengerId'], axis=1)
 
 #Z jednej strony parametr Cabin zawiera wiele pustych pozycji, z drugiej strony
@@ -130,6 +174,13 @@ nan_dict['Fare'] = raw_data_training['Fare'].mode()[0]
 data_training = fill_nan(raw_data_training, nan_dict)
 data_test = fill_nan(raw_data_test, nan_dict)
 
+#dodajmy nastepujaca ceche - jezeli ktos ma wiecej niz 18 lat 
+#uznajemy parch za ilosc dzieci. 
+#dodatkowo, kodujemy dzieci jako '2'
+
+data_training['HasChildren'] = has_children(data_training)
+data_test['HasChildren'] = has_children(data_test)
+
 #dodamy jeszcze jedna ceche - czy jest samotny na statku?
 data_training['IsAlone'] = is_alone(data_training)
 data_test['IsAlone'] = is_alone(data_test)
@@ -169,6 +220,10 @@ print(data_training[['Survived', 'IsAlone']].groupby(['IsAlone']).mean())
 print('Title')
 print(data_training[['Survived', 'Title']].groupby(['Title']).mean())
 
+#czy posiadanie dzieci sprzyja przezyciu?
+print('HasChildren')
+print(data_training[['Survived', 'HasChildren']].groupby(['HasChildren']).mean())
+
 #a jak z wiekiem? Rozklady sa jakies inne?
 print('Age')
 age_survived = data_training['Age'].values[data_training['Survived'].values == 1]
@@ -186,6 +241,89 @@ print(data_training['Title'].value_counts())
 data_training['Title'] = encode_title(data_training)
 data_test['Title'] = encode_title(data_test)
 
+#zakodujmy jeszcze odpowiednio niektore kolumny
+data_training, label_enc, oh_enc = encode_column(data_training, 'Pclass')
+data_test, _, _ = encode_column(data_test, 'Pclass')
+
+data_training, label_enc, oh_enc = encode_column(data_training, 'Embarked')
+data_test, _, _ = encode_column(data_test, 'Embarked')
+
+data_training, label_enc, oh_enc = encode_column(data_training, 'Title')
+data_test, _, _ = encode_column(data_test, 'Title')
+
+data_training, label_enc, oh_enc = encode_column(data_training, 'HasChildren')
+data_test, _, _ = encode_column(data_test, 'HasChildren')
 
 X_train, y_train = x_y_split(data_training)
 X_test, _ = x_y_split(data_test)
+
+"""Budujemy klasyfikator!"""
+def forest_backward_selection(forest, X, y, threshold):
+    while True:
+        columns = list(X.columns.values)
+        forest.fit(X, y)
+        importances = list(forest.feature_importances_)
+        
+        if min(importances) >= threshold:
+            break
+        else:
+            index_to_remove = importances.index(min(importances))
+            columns.pop(index_to_remove)
+            X = X[columns]
+        
+    return X, columns
+
+mean_scores = []
+train_scores = []
+index_train = []
+#for i in np.linspace(2., 90, num=50):
+#    forest = RandomForestClassifier(n_estimators=int(i),
+#                                    min_samples_split=13,
+#                                    min_samples_leaf=5,
+#                                    random_state=0)
+#    
+#    #svc = SVC(probability=False, random_state=0)
+#    
+#    _, selected_columns = forest_backward_selection(forest, X_train, y_train, 0.)
+#    
+#    X_train = X_train[selected_columns]
+#    X_test = X_test[selected_columns]
+#    
+#    kfold = StratifiedKFold(n_splits=3, random_state=0)
+#    X = X_train.values.astype('float')
+#    y = y_train.values.astype('float')
+#    scores = []
+##    for train, test in kfold.split(X, y):
+##        forest.fit(X[train], y[train])
+##        scores += [forest.score(X[test], y[test])]
+#    X_tr, X_tst, y_tr, y_tst = train_test_split(X, y, test_size=0.3, random_state=0)
+#    forest.fit(X_tr, y_tr)
+#    #svc.fit(X_tr, y_tr)
+#    scores += [forest.score(X_tst, y_tst)]
+#    mean_scores.append(np.mean(scores))
+#    train_scores.append(forest.score(X_tr, y_tr))
+#    print(mean_scores[-1], train_scores[-1])
+#    index_train.append(i)
+
+forest = RandomForestClassifier(n_estimators=20,
+                                min_samples_split=13,
+                                min_samples_leaf=5,
+                                random_state=0)
+
+svc = SVC(probability=True)
+
+X = X_train.values.astype('float')
+y = y_train.values.astype('float')
+forest.fit(X, y)
+svc.fit(X, y)
+X = X_test.values.astype('float')
+result = forest.predict(X)
+
+result_dataframe = pnds.DataFrame()
+result_dataframe['PassengerId'] = test_passenger_id
+result_dataframe['Survived'] = result.astype('int')
+
+result_dataframe.to_csv(r'out.csv', index=False)
+pp.figure(3)
+pp.plot(index_train, mean_scores, color='r')
+pp.plot(index_train, train_scores, color='b')
