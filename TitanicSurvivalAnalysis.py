@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pnds
 import re
+import os
 
 from matplotlib import pyplot as pp
 from scipy.stats import ttest_ind
@@ -150,7 +151,12 @@ nan_dict['Embarked'] = raw_data_training['Embarked'].mode()[0]
 #Jaka jest struktura wieku na titanicu?
 pp.figure(0)
 age_stats = np.array(raw_data_training['Age'].dropna().loc[:])
-pp.hist(age_stats, bins=20)
+pp.hist(age_stats, bins=20, normed=True)
+pp.xlabel('Age')
+pp.ylabel('% of specific age')
+pp.title('Age distribution')
+pp.show()
+
 age_mode = raw_data_training['Age'].mode()[0]
 age_median = np.median(raw_data_training['Age'].dropna().loc[:])
 age_mean = np.mean(raw_data_training['Age'].dropna().loc[:])
@@ -165,7 +171,11 @@ nan_dict['Parch'] = raw_data_training['Parch'].mode()[0]
 #Jaka jest struktura ceny biletu?
 pp.figure(1)
 fare_stats = np.array(raw_data_training['Fare'].dropna().loc[:])
-pp.hist(fare_stats, bins=20)
+pp.hist(fare_stats, bins=20, normed=True)
+pp.xlabel('Fare')
+pp.ylabel('% of specific fare')
+pp.title('Fare distribution')
+pp.show()
 
 #wykorzystamy mode
 nan_dict['Fare'] = raw_data_training['Fare'].mode()[0]
@@ -228,9 +238,19 @@ print(data_training[['Survived', 'HasChildren']].groupby(['HasChildren']).mean()
 print('Age')
 age_survived = data_training['Age'].values[data_training['Survived'].values == 1]
 age_dead = data_training['Age'].values[data_training['Survived'].values == 0]
+
 pp.figure(2)
-pp.hist([age_survived, age_dead], bins=10)
+pp.hist([age_survived, age_dead], 
+        bins=10, 
+        normed=True, 
+        color='br', 
+        label=['Survived', 'Dead'])
+pp.xlabel('Age')
+pp.ylabel('% of specific Age')
+pp.title('Survived vs dead age distribution')
+pp.legend()
 print(ttest_ind(age_survived, age_dead))
+
 #11% szansa, ze nie ma roznicy w rozkladzie wieku obu grup
 
 #niektore tytuly maja 100% lub 0% przezywalnosc. Sprawdzmy ile osob nosi dany
@@ -273,9 +293,9 @@ def forest_backward_selection(forest, X, y, threshold):
         
     return X, columns
 
-mean_scores = []
-train_scores = []
-index_train = []
+#mean_scores = []
+#train_scores = []
+#index_train = []
 #for i in np.linspace(2., 90, num=50):
 #    forest = RandomForestClassifier(n_estimators=int(i),
 #                                    min_samples_split=13,
@@ -304,6 +324,9 @@ index_train = []
 #    train_scores.append(forest.score(X_tr, y_tr))
 #    print(mean_scores[-1], train_scores[-1])
 #    index_train.append(i)
+#pp.figure(3)
+#pp.plot(index_train, mean_scores, color='r')
+#pp.plot(index_train, train_scores, color='b')
 
 forest = RandomForestClassifier(n_estimators=20,
                                 min_samples_split=13,
@@ -323,7 +346,17 @@ result_dataframe = pnds.DataFrame()
 result_dataframe['PassengerId'] = test_passenger_id
 result_dataframe['Survived'] = result.astype('int')
 
+
+out_path = r'out.csv'
+previous_dataframe = pnds.DataFrame()
+
+try:
+    previous_dataframe = pnds.read_csv(out_path)
+    if all(previous_dataframe['Survived'].values == result_dataframe['Survived']):
+        print('No change')
+    else:
+        print('Change!')
+except Exception as error:
+    print(error)
+
 result_dataframe.to_csv(r'out.csv', index=False)
-pp.figure(3)
-pp.plot(index_train, mean_scores, color='r')
-pp.plot(index_train, train_scores, color='b')
