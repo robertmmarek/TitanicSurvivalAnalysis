@@ -152,9 +152,9 @@ nan_dict['Embarked'] = raw_data_training['Embarked'].mode()[0]
 pp.figure(0)
 age_stats = np.array(raw_data_training['Age'].dropna().loc[:])
 pp.hist(age_stats, bins=20, normed=True)
-pp.xlabel('Age')
-pp.ylabel('% of specific age')
-pp.title('Age distribution')
+pp.xlabel('Wiek')
+pp.ylabel('% danego przedziału wieku')
+pp.title('Dystrybucja wieku')
 pp.show()
 
 age_mode = raw_data_training['Age'].mode()[0]
@@ -169,12 +169,12 @@ nan_dict['SibSp'] = raw_data_training['SibSp'].mode()[0]
 nan_dict['Parch'] = raw_data_training['Parch'].mode()[0]
 
 #Jaka jest struktura ceny biletu?
-pp.figure(1)
+pp.figure(1) 
 fare_stats = np.array(raw_data_training['Fare'].dropna().loc[:])
 pp.hist(fare_stats, bins=20, normed=True)
-pp.xlabel('Fare')
-pp.ylabel('% of specific fare')
-pp.title('Fare distribution')
+pp.xlabel('Cena biletu')
+pp.ylabel('% danego przedziału ceny')
+pp.title('Dystrybucja ceny biletu')
 pp.show()
 
 #wykorzystamy mode
@@ -202,9 +202,25 @@ data_training['Sex'] = data_training['Sex'].apply(binarize_sex)
 data_test['Sex'] = data_test['Sex'].apply(binarize_sex)
 
 """Przeanalizujmy to, co mamy"""
+#jak wyglada rozklad ceny biletu zaleznie od ceny biletu?
+fare_s = data_training['Fare'].values[data_training['Survived'].values == 1.]
+fare_ns = data_training['Fare'].values[data_training['Survived'].values == 0.]
+pp.figure(2)
+pp.hist([fare_s, fare_ns], 
+        normed=True, 
+        label=['Ocaleni', 'Ofiary'])
+pp.xlabel('Cena biletu')
+pp.ylabel('% danego zakresu cenowego w grupie')
+pp.title('Cena biletu: ocaleni vs ofiary')
+pp.legend()
+pp.show()
+print("fare t-test: "+str(ttest_ind(fare_s, fare_ns)))
+
 #jak wyglada przezywalnosc wedlug plci?
 print('Przezywalnosc wzgledem plci')
 print(data_training[['Survived', 'Sex']].groupby(['Sex']).mean())
+print('Stosunek mężczyzn do kobiet')
+print(np.mean(data_training['Sex'].values.astype('float')))
 
 #jak wyglada przezywalnosc wedlug klasy?
 print('Pclass')
@@ -217,6 +233,7 @@ print(data_training[['Survived', 'SibSp']].groupby(['SibSp']).mean())
 #a jak w przypadku rodzicow/dzieci?
 print('Parch')
 print(data_training[['Survived', 'Parch']].groupby(['Parch']).mean())
+print(data_training['Parch'].value_counts())
 
 #czy mezatki radza sobie lepiej?
 print('MarriedWoman')
@@ -239,17 +256,17 @@ print('Age')
 age_survived = data_training['Age'].values[data_training['Survived'].values == 1]
 age_dead = data_training['Age'].values[data_training['Survived'].values == 0]
 
-pp.figure(2)
+pp.figure(3)
 pp.hist([age_survived, age_dead], 
         bins=10, 
         normed=True, 
         color='br', 
-        label=['Survived', 'Dead'])
-pp.xlabel('Age')
-pp.ylabel('% of specific Age')
-pp.title('Survived vs dead age distribution')
+        label=['Ocaleni', 'Ofiary'])
+pp.xlabel('Wiek')
+pp.ylabel('% danego zakresu wieku')
+pp.title('Rozkład wieku: ocaleni vs ofiary')
 pp.legend()
-print(ttest_ind(age_survived, age_dead))
+print("t-test age: "+str(ttest_ind(age_survived, age_dead)))
 
 #11% szansa, ze nie ma roznicy w rozkladzie wieku obu grup
 
